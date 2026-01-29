@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axiosInstance from '../api/axiosInstance';
 
 const jobOptions = [
   { value: 'Belum / Tidak Bekerja', label: 'Belum / Tidak Bekerja' },
@@ -13,19 +14,12 @@ const jobOptions = [
   { value: 'Lainnya', label: 'Profesi Lainnya' }
 ];
 
-const UserEditModal = ({ isOpen, onClose, user, cities, districts, villages, onSuccess, token }) => {
+const UserEditModal = ({ isOpen, onClose, user, cities, districts, villages, onSuccess }) => {
   const [formData, setFormData] = useState({
-    name: '',
-    birth_date: '',
-    telp: '',
-    gender: 'male',
-    job: '',
-    job_other: '',
-    village_id: '',
-    nik: '',
-    address: ''
+    name: '', birth_date: '', telp: '', gender: 'male',
+    job: '', job_other: '', village_id: '', nik: '', address: ''
   });
-  
+
   const [formErrors, setFormErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedCity, setSelectedCity] = useState('');
@@ -33,18 +27,16 @@ const UserEditModal = ({ isOpen, onClose, user, cities, districts, villages, onS
   const [filteredDistricts, setFilteredDistricts] = useState([]);
   const [filteredVillages, setFilteredVillages] = useState([]);
 
+  // State untuk reset password
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+
   useEffect(() => {
     if (user && isOpen) {
-      // Parse birth_date
-      let birthDateValue = '';
-      if (user.birth_date) {
-        const date = new Date(user.birth_date);
-        birthDateValue = date.toISOString().split('T')[0];
-      }
-
-      // Check if job is custom (not in predefined options)
+      let birthDateValue = user.birth_date ? new Date(user.birth_date).toISOString().split('T')[0] : '';
       const isCustomJob = user.job && !jobOptions.find(opt => opt.value === user.job);
-      
+
       setFormData({
         name: user.name || '',
         birth_date: birthDateValue,
@@ -57,30 +49,22 @@ const UserEditModal = ({ isOpen, onClose, user, cities, districts, villages, onS
         address: user.address || ''
       });
 
-      // Set wilayah
-      if (user.city_id) {
-        setSelectedCity(user.city_id);
-      }
-      if (user.district_id) {
-        setSelectedDistrict(user.district_id);
-      }
+      setSelectedCity(user.city_id || '');
+      setSelectedDistrict(user.district_id || '');
     }
   }, [user, isOpen]);
 
   useEffect(() => {
     if (selectedCity) {
-      const filtered = districts.filter(d => d.city_id === selectedCity);
-      setFilteredDistricts(filtered);
+      setFilteredDistricts(districts.filter(d => d.city_id === selectedCity));
     } else {
       setFilteredDistricts([]);
-      setFilteredVillages([]);
     }
   }, [selectedCity, districts]);
 
   useEffect(() => {
     if (selectedDistrict) {
-      const filtered = villages.filter(v => v.district_id === selectedDistrict);
-      setFilteredVillages(filtered);
+      setFilteredVillages(villages.filter(v => v.district_id === selectedDistrict));
     } else {
       setFilteredVillages([]);
     }
@@ -90,88 +74,49 @@ const UserEditModal = ({ isOpen, onClose, user, cities, districts, villages, onS
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    if (formErrors[name]) {
-      setFormErrors(prev => ({ ...prev, [name]: '' }));
-    }
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   const handleCityChange = (e) => {
-    const cityId = e.target.value;
-    setSelectedCity(cityId);
+    setSelectedCity(e.target.value);
     setSelectedDistrict('');
-    setFormData(prev => ({ 
-      ...prev, 
-      village_id: '' 
-    }));
+    setFormData(prev => ({ ...prev, village_id: '' }));
   };
 
   const handleDistrictChange = (e) => {
-    const districtId = e.target.value;
-    setSelectedDistrict(districtId);
-    setFormData(prev => ({ 
-      ...prev, 
-      village_id: '' 
-    }));
+    setSelectedDistrict(e.target.value);
+    setFormData(prev => ({ ...prev, village_id: '' }));
   };
 
   const handleJobChange = (e) => {
     const job = e.target.value;
-    setFormData(prev => ({
-      ...prev,
-      job: job,
-      job_other: job === 'Lainnya' ? prev.job_other : ''
-    }));
+    setFormData(prev => ({ ...prev, job: job, job_other: job === 'Lainnya' ? prev.job_other : '' }));
   };
-  
+
   const validateForm = () => {
     const errors = {};
-    
     if (!formData.name.trim()) errors.name = 'Nama lengkap wajib diisi';
     if (!formData.birth_date) errors.birth_date = 'Tanggal lahir wajib diisi';
-    
-    if (!formData.telp.trim()) {
-      errors.telp = 'No. telepon wajib diisi';
-    } else if (!/^[0-9]{10,15}$/.test(formData.telp.trim())) {
-      errors.telp = 'No. telepon harus 10-15 digit angka';
-    }
-    
+    if (!formData.telp.trim() || !/^[0-9]{10,15}$/.test(formData.telp.trim())) errors.telp = 'No. telepon harus 10-15 digit';
     if (!formData.job) errors.job = 'Pekerjaan wajib dipilih';
-    
-    if (formData.job === 'Lainnya' && !formData.job_other.trim()) {
-      errors.job_other = 'Harap sebutkan profesi lainnya';
-    }
-    
+    if (formData.job === 'Lainnya' && !formData.job_other.trim()) errors.job_other = 'Harap sebutkan profesi';
     if (!selectedCity) errors.city = 'Kabupaten/Kota wajib dipilih';
     if (!selectedDistrict) errors.district = 'Kecamatan wajib dipilih';
     if (!formData.village_id) errors.village_id = 'Kelurahan/Desa wajib dipilih';
-    
-    if (!formData.nik.trim()) {
-      errors.nik = 'NIK wajib diisi';
-    } else if (!/^[0-9]{16}$/.test(formData.nik.trim())) {
-      errors.nik = 'NIK harus 16 digit angka';
-    }
-    
+    if (!formData.nik.trim() || !/^[0-9]{16}$/.test(formData.nik.trim())) errors.nik = 'NIK harus 16 digit';
     if (!formData.address.trim()) errors.address = 'Alamat wajib diisi';
-    
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!validateForm()) return;
-    
     setIsSubmitting(true);
-    
+
     try {
       const finalJob = formData.job === 'Lainnya' ? formData.job_other : formData.job;
-      
       const payload = {
         name: formData.name.trim(),
         birth_date: formData.birth_date + 'T00:00:00Z',
@@ -182,11 +127,9 @@ const UserEditModal = ({ isOpen, onClose, user, cities, districts, villages, onS
         nik: formData.nik.trim(),
         address: formData.address.trim()
       };
-      
-      console.log('Updating user:', user.id, payload);
-      
+
       await onSuccess(user.id, payload);
-      
+
     } catch (error) {
       console.error('Error updating user:', error);
     } finally {
@@ -194,396 +137,223 @@ const UserEditModal = ({ isOpen, onClose, user, cities, districts, villages, onS
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!newPassword.trim()) {
+      alert('Password baru wajib diisi');
+      return;
+    }
+    if (newPassword.length < 6) {
+      alert('Password minimal 6 karakter');
+      return;
+    }
+
+    setIsResettingPassword(true);
+    try {
+      const response = await axiosInstance.post(`/api/users/${user.id}/reset-password`, {
+        new_password: newPassword
+      });
+      if (response.data.success) {
+        alert('Password berhasil di-update! User akan diminta ganti password saat login.');
+        setShowPasswordModal(false);
+        setNewPassword('');
+      }
+    } catch (error) {
+      alert('Gagal reset password: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div 
-        className="modal-content" 
-        onClick={e => e.stopPropagation()}
-        style={{ 
-          maxWidth: '700px', 
-          maxHeight: 'calc(100vh - 40px)',
-          display: 'flex',
-          flexDirection: 'column'
-        }}
-      >
+      <div className="modal-content modal-large" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Edit Data Anggota</h2>
-          <button 
-            className="modal-close"
-            onClick={onClose}
-          >
-            ×
-          </button>
+          <button className="modal-close" onClick={onClose}>×</button>
         </div>
-        
-        <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="modal-body">
           <form onSubmit={handleSubmit} id="editUserForm">
-            <div style={{ display: 'grid', gap: '16px' }}>
-              
-              {/* Nama */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                  Nama Lengkap <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  placeholder="Masukkan nama lengkap"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: formErrors.name ? '1px solid #ef4444' : '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px'
-                  }}
-                />
-                {formErrors.name && (
-                  <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                    {formErrors.name}
-                  </span>
-                )}
+            <div className="form-grid">
+
+              <div className="form-group">
+                <label>Nama Lengkap <span className="required-star">*</span></label>
+                <input type="text" name="name" value={formData.name} onChange={handleInputChange} className={formErrors.name ? 'has-error' : ''} />
+                {formErrors.name && <span className="form-error-text">{formErrors.name}</span>}
               </div>
 
-              {/* Row: Jenis Kelamin dan Tanggal Lahir */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                    Jenis Kelamin <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <select
-                    name="gender"
-                    value={formData.gender}
-                    onChange={handleInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px'
-                    }}
-                  >
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Jenis Kelamin <span className="required-star">*</span></label>
+                  <select name="gender" value={formData.gender} onChange={handleInputChange}>
                     <option value="male">Laki-laki</option>
                     <option value="female">Perempuan</option>
                   </select>
                 </div>
-                
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                    Tanggal Lahir <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <input
-                    type="date"
-                    name="birth_date"
-                    value={formData.birth_date}
-                    onChange={handleInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: formErrors.birth_date ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px'
-                    }}
-                  />
-                  {formErrors.birth_date && (
-                    <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                      {formErrors.birth_date}
-                    </span>
-                  )}
+                <div className="form-group">
+                  <label>Tanggal Lahir <span className="required-star">*</span></label>
+                  <input type="date" name="birth_date" value={formData.birth_date} onChange={handleInputChange} className={formErrors.birth_date ? 'has-error' : ''} />
+                  {formErrors.birth_date && <span className="form-error-text">{formErrors.birth_date}</span>}
                 </div>
               </div>
 
-              {/* No. Telepon */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                  No. Telepon <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  name="telp"
-                  value={formData.telp}
-                  onChange={handleInputChange}
-                  placeholder="081234567890"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: formErrors.telp ? '1px solid #ef4444' : '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px'
-                  }}
-                />
-                {formErrors.telp && (
-                  <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                    {formErrors.telp}
-                  </span>
-                )}
+              <div className="form-group">
+                <label>No. Telepon <span className="required-star">*</span></label>
+                <input type="text" name="telp" value={formData.telp} onChange={handleInputChange} className={formErrors.telp ? 'has-error' : ''} />
+                {formErrors.telp && <span className="form-error-text">{formErrors.telp}</span>}
               </div>
 
-              {/* Pekerjaan */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                  Pekerjaan <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <select
-                  name="job"
-                  value={formData.job}
-                  onChange={handleJobChange}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: formErrors.job ? '1px solid #ef4444' : '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px'
-                  }}
-                >
+              <div className="form-group">
+                <label>Pekerjaan <span className="required-star">*</span></label>
+                <select name="job" value={formData.job} onChange={handleJobChange} className={formErrors.job ? 'has-error' : ''}>
                   <option value="">Pilih Pekerjaan</option>
-                  {jobOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
+                  {jobOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
-                {formErrors.job && (
-                  <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                    {formErrors.job}
-                  </span>
-                )}
+                {formErrors.job && <span className="form-error-text">{formErrors.job}</span>}
               </div>
 
               {formData.job === 'Lainnya' && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                    Sebutkan Profesi Lainnya <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="job_other"
-                    value={formData.job_other}
-                    onChange={handleInputChange}
-                    placeholder="Contoh: Freelancer, Designer, dll"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: formErrors.job_other ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px'
-                    }}
-                  />
-                  {formErrors.job_other && (
-                    <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                      {formErrors.job_other}
-                    </span>
-                  )}
+                <div className="form-group">
+                  <label>Sebutkan Profesi <span className="required-star">*</span></label>
+                  <input type="text" name="job_other" value={formData.job_other} onChange={handleInputChange} className={formErrors.job_other ? 'has-error' : ''} />
+                  {formErrors.job_other && <span className="form-error-text">{formErrors.job_other}</span>}
                 </div>
               )}
 
-              {/* NIK */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                  NIK (16 digit) <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  name="nik"
-                  value={formData.nik}
-                  onChange={handleInputChange}
-                  placeholder="3507091203000001"
-                  maxLength="16"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: formErrors.nik ? '1px solid #ef4444' : '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px'
-                  }}
-                />
-                {formErrors.nik && (
-                  <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                    {formErrors.nik}
-                  </span>
-                )}
+              <div className="form-group">
+                <label>NIK (16 digit) <span className="required-star">*</span></label>
+                <input type="text" name="nik" value={formData.nik} onChange={handleInputChange} maxLength="16" className={formErrors.nik ? 'has-error' : ''} />
+                {formErrors.nik && <span className="form-error-text">{formErrors.nik}</span>}
               </div>
 
-              {/* Wilayah Section */}
-              <div style={{ 
-                padding: '12px', 
-                background: '#f9fafb', 
-                borderRadius: '6px',
-                border: '1px solid #e5e7eb'
-              }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: '600' }}>
-                  📍 Wilayah Domisili
-                </h4>
-                
-                <div style={{ marginBottom: '12px' }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px' }}>
-                    Kabupaten/Kota <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <select
-                    value={selectedCity}
-                    onChange={handleCityChange}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: formErrors.city ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px'
-                    }}
-                  >
+              <div className="form-section-boxed">
+                <h4>📍 Wilayah Domisili</h4>
+                <div className="form-group">
+                  <label>Kabupaten/Kota <span className="required-star">*</span></label>
+                  <select value={selectedCity} onChange={handleCityChange} className={formErrors.city ? 'has-error' : ''}>
                     <option value="">Pilih Kabupaten/Kota</option>
-                    {cities.map(city => (
-                      <option key={city.id} value={city.id}>
-                        {city.name}
-                      </option>
-                    ))}
+                    {cities.map(city => <option key={city.id} value={city.id}>{city.name}</option>)}
                   </select>
-                  {formErrors.city && (
-                    <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                      {formErrors.city}
-                    </span>
-                  )}
+                  {formErrors.city && <span className="form-error-text">{formErrors.city}</span>}
                 </div>
-
-                <div style={{ marginBottom: '12px' }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px' }}>
-                    Kecamatan <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <select
-                    value={selectedDistrict}
-                    onChange={handleDistrictChange}
-                    disabled={!selectedCity}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: formErrors.district ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      opacity: !selectedCity ? 0.6 : 1,
-                      cursor: !selectedCity ? 'not-allowed' : 'pointer'
-                    }}
-                  >
+                <div className="form-group">
+                  <label>Kecamatan <span className="required-star">*</span></label>
+                  <select value={selectedDistrict} onChange={handleDistrictChange} disabled={!selectedCity} className={formErrors.district ? 'has-error' : ''}>
                     <option value="">Pilih Kecamatan</option>
-                    {filteredDistricts.map(district => (
-                      <option key={district.id} value={district.id}>
-                        {district.name}
-                      </option>
-                    ))}
+                    {filteredDistricts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
-                  {formErrors.district && (
-                    <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                      {formErrors.district}
-                    </span>
-                  )}
+                  {formErrors.district && <span className="form-error-text">{formErrors.district}</span>}
                 </div>
-
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px' }}>
-                    Kelurahan/Desa <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <select
-                    name="village_id"
-                    value={formData.village_id}
-                    onChange={handleInputChange}
-                    disabled={!selectedDistrict}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: formErrors.village_id ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      opacity: !selectedDistrict ? 0.6 : 1,
-                      cursor: !selectedDistrict ? 'not-allowed' : 'pointer'
-                    }}
-                  >
+                <div className="form-group">
+                  <label>Kelurahan/Desa <span className="required-star">*</span></label>
+                  <select name="village_id" value={formData.village_id} onChange={handleInputChange} disabled={!selectedDistrict} className={formErrors.village_id ? 'has-error' : ''}>
                     <option value="">Pilih Kelurahan/Desa</option>
-                    {filteredVillages.map(village => (
-                      <option key={village.id} value={village.id}>
-                        {village.name}
-                      </option>
-                    ))}
+                    {filteredVillages.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                   </select>
-                  {formErrors.village_id && (
-                    <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                      {formErrors.village_id}
-                    </span>
-                  )}
+                  {formErrors.village_id && <span className="form-error-text">{formErrors.village_id}</span>}
                 </div>
               </div>
 
-              {/* Alamat */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                  Alamat Lengkap <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <textarea
-                  name="address"
-                  value={formData.address}
-                  onChange={handleInputChange}
-                  placeholder="Jl. Merdeka No. 45, RT 01/RW 02"
-                  rows="3"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: formErrors.address ? '1px solid #ef4444' : '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    fontFamily: 'inherit',
-                    resize: 'vertical'
-                  }}
-                />
-                {formErrors.address && (
-                  <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                    {formErrors.address}
-                  </span>
-                )}
+              <div className="form-group">
+                <label>Alamat Lengkap <span className="required-star">*</span></label>
+                <textarea name="address" value={formData.address} onChange={handleInputChange} rows="3" className={formErrors.address ? 'has-error' : ''}></textarea>
+                {formErrors.address && <span className="form-error-text">{formErrors.address}</span>}
               </div>
 
             </div>
+          </form>
+        </div>
 
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'flex-end', 
-              gap: '12px',
-              marginTop: '24px',
-              paddingTop: '16px',
-              borderTop: '1px solid #e5e7eb',
-              position: 'sticky',
-              bottom: 0,
-              background: 'white',
-              marginLeft: '-24px',
-              marginRight: '-24px',
-              paddingLeft: '24px',
-              paddingRight: '24px'
-            }}>
+        <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+          <button
+            type="button"
+            onClick={() => setShowPasswordModal(true)}
+            disabled={isSubmitting}
+            style={{
+              padding: '10px 16px',
+              background: '#f59e0b',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            Edit Password
+          </button>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmitting}>
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={isSubmitting}
+              form="editUserForm"
+            >
+              {isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal Reset Password */}
+      {showPasswordModal && (
+        <div className="modal-overlay" style={{ zIndex: 1001 }} onClick={() => setShowPasswordModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Reset Password</h2>
+              <button className="modal-close" onClick={() => setShowPasswordModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: '16px', color: '#374151' }}>
+                Reset password untuk: <strong>{user.name}</strong>
+              </p>
+              <div className="form-group">
+                <label>Password Baru <span className="required-star">*</span></label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Masukkan password baru (min. 6 karakter)"
+                  autoFocus
+                />
+              </div>
+              {/* <div style={{
+                padding: '12px',
+                background: '#fef3c7',
+                border: '1px solid #fbbf24',
+                borderRadius: '8px',
+                fontSize: '13px',
+                color: '#92400e',
+                marginTop: '16px'
+              }}>
+                ⚠️ User akan diminta mengganti password saat login berikutnya.
+              </div> */}
+            </div>
+            <div className="modal-footer">
               <button
                 type="button"
-                onClick={onClose}
-                style={{
-                  padding: '10px 20px',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-                disabled={isSubmitting}
+                className="btn-secondary"
+                onClick={() => { setShowPasswordModal(false); setNewPassword(''); }}
+                disabled={isResettingPassword}
               >
                 Batal
               </button>
               <button
-                type="submit"
+                type="button"
                 className="btn-primary"
-                disabled={isSubmitting}
-                form="editUserForm"
+                onClick={handleResetPassword}
+                disabled={isResettingPassword || !newPassword.trim()}
               >
-                {isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
+                {isResettingPassword ? 'Menyimpan...' : 'Reset Password'}
               </button>
             </div>
-          </form>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

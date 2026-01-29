@@ -25,29 +25,30 @@ const UserDetailModal = ({ isOpen, onClose, user, loading }) => {
     });
   };
 
+  // Helper untuk render baris info
+  const InfoRow = ({ label, value, isCode = false }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #f3f4f6' }}>
+      <span style={{ color: '#6b7280', fontSize: '14px' }}>{label}</span>
+      {isCode ? (
+        <code style={{ fontSize: '14px', background: '#f3f4f6', padding: '4px 8px', borderRadius: '4px', fontWeight: '500' }}>
+          {value || '-'}
+        </code>
+      ) : (
+        <strong style={{ fontSize: '14px', textAlign: 'right' }}>{value || '-'}</strong>
+      )}
+    </div>
+  );
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div 
-        className="modal-content" 
-        onClick={e => e.stopPropagation()}
-        style={{ 
-          maxWidth: '600px',
-          maxHeight: 'calc(100vh - 40px)',
-          display: 'flex',
-          flexDirection: 'column'
-        }}
-      >
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        
         <div className="modal-header">
           <h2>Detail Anggota</h2>
-          <button 
-            className="modal-close"
-            onClick={onClose}
-          >
-            ×
-          </button>
+          <button className="modal-close" onClick={onClose}>×</button>
         </div>
         
-        <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="modal-body">
           {loading ? (
             <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
               Memuat data...
@@ -57,186 +58,60 @@ const UserDetailModal = ({ isOpen, onClose, user, loading }) => {
               Data tidak ditemukan
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: '20px' }}>
-              {/* Header dengan Status */}
-              <div style={{
-                padding: '16px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                borderRadius: '8px',
-                color: 'white'
-              }}>
+            <div style={{ display: 'grid', gap: '24px' }}>
+              
+              <div style={{ padding: '16px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                 <h3 style={{ margin: '0 0 8px 0', fontSize: '20px' }}>
                   {user.name}
                 </h3>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {user.is_mobile && (
-                    <span style={{
-                      padding: '4px 10px',
-                      background: 'rgba(255, 255, 255, 0.25)',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: '500'
-                    }}>
-                      📱 Pengguna Mobile
-                    </span>
+                    <span className="status-badge badge-green">📱 Pengguna Mobile</span>
                   )}
-                  <span style={{
-                    padding: '4px 10px',
-                    background: 'rgba(255, 255, 255, 0.25)',
-                    borderRadius: '12px',
-                    fontSize: '12px',
-                    fontWeight: '500'
-                  }}>
-                    {user.gender === 'male' ? '👨 Laki-laki' : '👩 Perempuan'}
+                  <span className="status-badge badge-gray">
+                    {user.gender === 'male' ? '♂️ Laki-laki' : '♀️ Perempuan'}
                   </span>
                 </div>
               </div>
 
-              {/* Data Pribadi */}
               <div>
-                <h4 style={{ 
-                  fontSize: '14px', 
-                  fontWeight: '600', 
-                  color: '#374151',
-                  marginBottom: '12px',
-                  paddingBottom: '8px',
-                  borderBottom: '2px solid #e5e7eb'
-                }}>
+                <h4 className="form-section-boxed" style={{background:'transparent', padding:0, border:0, borderBottom: '2px solid #e5e7eb', paddingBottom:'8px', marginBottom:'12px'}}>
                   Data Pribadi
                 </h4>
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                    <span style={{ color: '#6b7280', fontSize: '14px' }}>NIK</span>
-                    <code style={{ 
-                      fontSize: '14px', 
-                      background: '#f3f4f6', 
-                      padding: '4px 8px', 
-                      borderRadius: '4px',
-                      fontWeight: '500'
-                    }}>
-                      {user.nik || '-'}
-                    </code>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                    <span style={{ color: '#6b7280', fontSize: '14px' }}>Tanggal Lahir</span>
-                    <strong style={{ fontSize: '14px' }}>{formatDate(user.birth_date)}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                    <span style={{ color: '#6b7280', fontSize: '14px' }}>Usia</span>
-                    <strong style={{ fontSize: '14px' }}>
-                      {user.birth_date ? `${calculateAge(user.birth_date)} tahun` : '-'}
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                    <span style={{ color: '#6b7280', fontSize: '14px' }}>Pekerjaan</span>
-                    <strong style={{ fontSize: '14px' }}>{user.job || '-'}</strong>
-                  </div>
-                </div>
+                <InfoRow label="NIK" value={user.nik} isCode={true} />
+                <InfoRow label="Tanggal Lahir" value={formatDate(user.birth_date)} />
+                <InfoRow label="Usia" value={user.birth_date ? `${calculateAge(user.birth_date)} tahun` : '-'} />
+                <InfoRow label="Pekerjaan" value={user.job} />
               </div>
 
-              {/* Kontak */}
               <div>
-                <h4 style={{ 
-                  fontSize: '14px', 
-                  fontWeight: '600', 
-                  color: '#374151',
-                  marginBottom: '12px',
-                  paddingBottom: '8px',
-                  borderBottom: '2px solid #e5e7eb'
-                }}>
-                  Kontak
+                <h4 className="form-section-boxed" style={{background:'transparent', padding:0, border:0, borderBottom: '2px solid #e5e7eb', paddingBottom:'8px', marginBottom:'12px'}}>
+                  Kontak & Wilayah
                 </h4>
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                    <span style={{ color: '#6b7280', fontSize: '14px' }}>No. Telepon</span>
-                    <strong style={{ fontSize: '14px' }}>
-                      {user.telp ? `📞 ${user.telp}` : '-'}
-                    </strong>
-                  </div>
-                </div>
+                <InfoRow label="No. Telepon" value={user.telp} />
+                <InfoRow label="Alamat" value={user.address} />
+                <InfoRow label="Kelurahan/Desa" value={user.village_name} />
+                <InfoRow label="Kecamatan" value={user.district_name} />
+                <InfoRow label="Kabupaten/Kota" value={user.city_name} />
               </div>
-
-              {/* Alamat & Wilayah */}
-              <div>
-                <h4 style={{ 
-                  fontSize: '14px', 
-                  fontWeight: '600', 
-                  color: '#374151',
-                  marginBottom: '12px',
-                  paddingBottom: '8px',
-                  borderBottom: '2px solid #e5e7eb'
-                }}>
-                  Alamat & Wilayah
-                </h4>
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  <div style={{ padding: '8px 0' }}>
-                    <span style={{ color: '#6b7280', fontSize: '14px', display: 'block', marginBottom: '4px' }}>
-                      Alamat Lengkap
-                    </span>
-                    <strong style={{ fontSize: '14px' }}>{user.address || '-'}</strong>
-                  </div>
-                  <div style={{ padding: '8px 0' }}>
-                    <span style={{ color: '#6b7280', fontSize: '14px', display: 'block', marginBottom: '4px' }}>
-                      Kelurahan/Desa
-                    </span>
-                    <strong style={{ fontSize: '14px' }}>{user.village_name || '-'}</strong>
-                  </div>
-                  <div style={{ padding: '8px 0' }}>
-                    <span style={{ color: '#6b7280', fontSize: '14px', display: 'block', marginBottom: '4px' }}>
-                      Kecamatan
-                    </span>
-                    <strong style={{ fontSize: '14px' }}>{user.district_name || '-'}</strong>
-                  </div>
-                  <div style={{ padding: '8px 0' }}>
-                    <span style={{ color: '#6b7280', fontSize: '14px', display: 'block', marginBottom: '4px' }}>
-                      Kabupaten/Kota
-                    </span>
-                    <strong style={{ fontSize: '14px' }}>{user.city_name || '-'}</strong>
-                  </div>
-                </div>
+              
+              <div style={{ padding: '12px', background: '#f9fafb', borderRadius: '6px', fontSize: '12px', color: '#6b7280' }}>
+                {user.created_at && (
+                  <InfoRow label="Terdaftar" value={formatDate(user.created_at)} />
+                )}
+                {user.updated_at && user.updated_at !== user.created_at && (
+                  <InfoRow label="Diubah" value={formatDate(user.updated_at)} />
+                )}
               </div>
-
-              {/* Info Tambahan */}
-              {(user.created_at || user.updated_at) && (
-                <div style={{
-                  padding: '12px',
-                  background: '#f9fafb',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  color: '#6b7280'
-                }}>
-                  {user.created_at && (
-                    <div>Terdaftar: {formatDate(user.created_at)}</div>
-                  )}
-                  {user.updated_at && (
-                    <div>Terakhir diubah: {formatDate(user.updated_at)}</div>
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>
 
-        <div style={{
-          padding: '16px 24px',
-          borderTop: '1px solid #e5e7eb',
-          display: 'flex',
-          justifyContent: 'flex-end',
-          position: 'sticky',
-          bottom: 0,
-          background: 'white'
-        }}>
+        <div className="modal-footer" style={{ background: 'white' }}>
           <button
+            type="button"
+            className="btn-primary"
             onClick={onClose}
-            style={{
-              padding: '10px 24px',
-              background: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
           >
             Tutup
           </button>

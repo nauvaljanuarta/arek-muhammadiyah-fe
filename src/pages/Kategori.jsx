@@ -1,531 +1,138 @@
 import React, { useState, useEffect } from 'react';
+import axiosInstance from '../api/axiosInstance';
 
-function Kategori({ token }) {
+function Kategori() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    color: '#3B82F6',
-    icon: 'circle',
-    is_active: true
-  });
-  const [formErrors, setFormErrors] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({ name: '', description: '', color: '#3B82F6', icon: 'circle', is_active: true });
 
   const iconOptions = [
-    { value: 'book', label: '📚 Book', emoji: '📚' },
-    { value: 'heart', label: '❤️ Heart', emoji: '❤️' },
-    { value: 'chart', label: '📊 Chart', emoji: '📊' },
-    { value: 'mosque', label: '🕌 Mosque', emoji: '🕌' },
-    { value: 'circle', label: '⭕ Circle', emoji: '⭕' },
-    { value: 'star', label: '⭐ Star', emoji: '⭐' },
-    { value: 'flag', label: '🚩 Flag', emoji: '🚩' },
-    { value: 'tag', label: '🏷️ Tag', emoji: '🏷️' }
+    { value: 'book', emoji: '📚' }, { value: 'heart', emoji: '❤️' },
+    { value: 'chart', emoji: '📊' }, { value: 'mosque', emoji: '🕌' },
+    { value: 'circle', emoji: '⭕' }, { value: 'star', emoji: '⭐' },
+    { value: 'flag', emoji: '🚩' }, { value: 'tag', emoji: '🏷️' }
   ];
 
-  useEffect(() => {
-    if (token) {
-      fetchCategories();
-    }
-  }, [token]);
+  useEffect(() => { fetchCategories(); }, []);
 
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8080/api/categories', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setCategories(result.data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-    } finally {
-      setLoading(false);
-    }
+      const response = await axiosInstance.get('/api/categories');
+      if (response.data.success) setCategories(response.data.data || []);
+    } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
   const handleOpenModal = (category = null) => {
-    if (category) {
-      setEditingCategory(category);
-      setFormData({
-        name: category.name,
-        description: category.description || '',
-        color: category.color || '#3B82F6',
-        icon: category.icon || 'circle',
-        is_active: category.is_active
-      });
-    } else {
-      setEditingCategory(null);
-      setFormData({
-        name: '',
-        description: '',
-        color: '#3B82F6',
-        icon: 'circle',
-        is_active: true
-      });
-    }
-    setFormErrors({});
+    setEditingCategory(category);
+    setFormData(category ? { ...category } : { name: '', description: '', color: '#3B82F6', icon: 'circle', is_active: true });
     setShowModal(true);
-  };
-
-  const handleCloseModal = () => {
-    setShowModal(false);
-    setEditingCategory(null);
-    setFormData({
-      name: '',
-      description: '',
-      color: '#3B82F6',
-      icon: 'circle',
-      is_active: true
-    });
-    setFormErrors({});
-  };
-
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
-    
-    if (formErrors[name]) {
-      setFormErrors(prev => ({ ...prev, [name]: '' }));
-    }
-  };
-
-  const validateForm = () => {
-    const errors = {};
-    if (!formData.name.trim()) errors.name = 'Nama kategori wajib diisi';
-    if (!formData.color) errors.color = 'Warna wajib dipilih';
-    if (!formData.icon) errors.icon = 'Icon wajib dipilih';
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!validateForm()) return;
-    
-    setIsSubmitting(true);
-    
     try {
-      const url = editingCategory
-        ? `http://localhost:8080/api/categories/${editingCategory.id}`
-        : 'http://localhost:8080/api/categories';
-      
-      const method = editingCategory ? 'PUT' : 'POST';
-      
-      const payload = {
-        name: formData.name.trim(),
-        description: formData.description.trim() || null,
-        color: formData.color,
-        icon: formData.icon,
-        is_active: formData.is_active
-      };
-      
-      const response = await fetch(url, {
-        method: method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-      
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.message || 'Gagal menyimpan kategori');
-      }
-      
-      alert(editingCategory ? 'Kategori berhasil diperbarui!' : 'Kategori berhasil ditambahkan!');
-      handleCloseModal();
+      const url = editingCategory ? `/api/categories/${editingCategory.id}` : `/api/categories`;
+      const method = editingCategory ? 'put' : 'post';
+      await axiosInstance[method](url, formData);
+      alert('Berhasil!'); setShowModal(false); fetchCategories();
+    } catch (error) { alert(error.message); }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm('Hapus kategori ini?')) {
+      await axiosInstance.delete(`/api/categories/${id}`);
       fetchCategories();
-      
-    } catch (error) {
-      console.error('Error saving category:', error);
-      alert('Gagal menyimpan kategori: ' + error.message);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async (id, name) => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus kategori "${name}"?`)) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`http://localhost:8080/api/categories/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.message || 'Gagal menghapus kategori');
-      }
-      
-      alert('Kategori berhasil dihapus');
-      fetchCategories();
-    } catch (error) {
-      console.error('Error deleting category:', error);
-      alert('Gagal menghapus kategori: ' + error.message);
-    }
-  };
-
-  const filteredCategories = categories.filter(category =>
-    category.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    category.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const getIconEmoji = (icon) => {
-    const found = iconOptions.find(opt => opt.value === icon);
-    return found ? found.emoji : '⭕';
-  };
+  const filtered = categories.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    <div className="page-container">
-      <div className="page-header">
+    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '24px' }}>
         <h1 className="page-title">Kategori</h1>
-        <button 
-          className="btn-primary"
-          onClick={() => handleOpenModal()}
-        >
-          + Tambah Kategori
-        </button>
+        <p style={{ color: '#6b7280', fontSize: '14px' }}>Manajemen kategori tiket dan artikel</p>
       </div>
 
       <div className="stats-grid">
-        <div className="stat-card">
-          <h3>Total Kategori</h3>
-          <div className="stat-value">{categories.length}</div>
-        </div>
-        <div className="stat-card">
-          <h3>Kategori Aktif</h3>
-          <div className="stat-value" style={{ color: '#10b981' }}>
-            {categories.filter(c => c.is_active).length}
-          </div>
-        </div>
-        <div className="stat-card">
-          <h3>Kategori Nonaktif</h3>
-          <div className="stat-value" style={{ color: '#ef4444' }}>
-            {categories.filter(c => !c.is_active).length}
-          </div>
-        </div>
+        <div className="stat-card"><h3>Total</h3><div className="stat-value">{categories.length}</div></div>
+        <div className="stat-card"><h3>Aktif</h3><div className="stat-value" style={{ color: '#10b981' }}>{categories.filter(c => c.is_active).length}</div></div>
       </div>
 
-      <div className="page-container" style={{ background: 'white', marginTop: '20px' }}>
-        <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
-          <input
-            type="text"
-            placeholder="Cari kategori..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              border: '1px solid #d1d5db',
-              borderRadius: '6px',
-              fontSize: '14px'
-            }}
-          />
+      <div className="page-container">
+        <div className="page-header-content">
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+            <input type="text" placeholder="Cari kategori..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ flex: 1, padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px' }} />
+            <button className="btn-primary" onClick={() => handleOpenModal()}>+ Tambah</button>
+          </div>
         </div>
 
         <div className="table-container">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Icon</th>
-                <th>Nama Kategori</th>
-                <th>Deskripsi</th>
+                <th style={{ width: '60px', textAlign: 'center' }}>Icon</th>
+                <th>Nama</th>
                 <th>Warna</th>
                 <th>Status</th>
-                <th>Tanggal Dibuat</th>
-                <th>Aksi</th>
+                <th style={{ textAlign: 'center' }}>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '40px' }}>
-                    Memuat data...
-                  </td>
-                </tr>
-              ) : filteredCategories.length === 0 ? (
-                <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '40px' }}>
-                    Tidak ada kategori yang ditemukan
-                  </td>
-                </tr>
-              ) : (
-                filteredCategories.map((category) => (
-                  <tr key={category.id}>
-                    <td style={{ fontSize: '24px', textAlign: 'center' }}>
-                      {getIconEmoji(category.icon)}
+              {loading ? <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>Loading...</td></tr> :
+                filtered.map(cat => (
+                  <tr key={cat.id}>
+                    <td style={{ textAlign: 'center', fontSize: '20px' }}>
+                      {iconOptions.find(i => i.value === cat.icon)?.emoji || '⭕'}
                     </td>
                     <td>
-                      <strong>{category.name}</strong>
+                      <strong>{cat.name}</strong>
+                      <div className="sub-text">{cat.description || '-'}</div>
                     </td>
-                    <td>{category.description || '-'}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: '4px',
-                          background: category.color,
-                          border: '1px solid #d1d5db'
-                        }} />
-                        <code style={{ fontSize: '12px' }}>{category.color}</code>
+                        <div style={{ width: '20px', height: '20px', borderRadius: '4px', background: cat.color }}></div>
+                        <span style={{ fontSize: '12px', color: '#6b7280' }}>{cat.color}</span>
                       </div>
                     </td>
                     <td>
                       <span style={{
-                        padding: '4px 12px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        background: category.is_active ? '#d1fae5' : '#fee2e2',
-                        color: category.is_active ? '#059669' : '#dc2626'
+                        padding: '6px 12px', borderRadius: '99px', fontSize: '12px', fontWeight: '600',
+                        background: cat.is_active ? '#d1fae5' : '#fee2e2',
+                        color: cat.is_active ? '#065f46' : '#991b1b'
                       }}>
-                        {category.is_active ? '✓ Aktif' : '✕ Nonaktif'}
+                        {cat.is_active ? 'Aktif' : 'Nonaktif'}
                       </span>
                     </td>
                     <td>
-                      {new Date(category.created_at).toLocaleDateString('id-ID', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric'
-                      })}
-                    </td>
-                    <td>
-                      <div className="action-buttons">
-                        <button 
-                          className="btn-edit" 
-                          onClick={() => handleOpenModal(category)}
-                          title="Edit"
-                        >
-                          ✏️
-                        </button>
-                        <button 
-                          className="btn-delete" 
-                          onClick={() => handleDelete(category.id, category.name)}
-                          title="Hapus"
-                        >
-                          🗑️
-                        </button>
+                      <div className="action-buttons" style={{ justifyContent: 'center' }}>
+                        <button className="btn-action-icon btn-edit" onClick={() => handleOpenModal(cat)}><svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
+                        <button className="btn-action-icon btn-delete" onClick={() => handleDelete(cat.id)}><svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
+                ))}
             </tbody>
           </table>
         </div>
-
-        {!loading && filteredCategories.length > 0 && (
-          <div style={{ 
-            padding: '16px 20px', 
-            borderTop: '1px solid #e5e7eb',
-            textAlign: 'center',
-            color: '#6b7280',
-            fontSize: '14px'
-          }}>
-            Menampilkan {filteredCategories.length} dari {categories.length} kategori
-          </div>
-        )}
       </div>
 
-      {/* Modal */}
+      {/* Modal Component inline or import */}
       {showModal && (
-        <div className="modal-overlay" onClick={handleCloseModal}>
-          <div 
-            className="modal-content" 
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: '500px' }}
-          >
-            <div className="modal-header">
-              <h2>{editingCategory ? 'Edit Kategori' : 'Tambah Kategori Baru'}</h2>
-              <button 
-                className="modal-close"
-                onClick={handleCloseModal}
-              >
-                ×
-              </button>
-            </div>
-            
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header"><h3>{editingCategory ? 'Edit' : 'Tambah'}</h3><button className="modal-close" onClick={() => setShowModal(false)}>×</button></div>
             <div className="modal-body">
               <form onSubmit={handleSubmit}>
-                <div style={{ display: 'grid', gap: '16px' }}>
-                  
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                      Nama Kategori <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      placeholder="Contoh: Pendidikan"
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        border: formErrors.name ? '1px solid #ef4444' : '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px'
-                      }}
-                    />
-                    {formErrors.name && (
-                      <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                        {formErrors.name}
-                      </span>
-                    )}
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                      Deskripsi
-                    </label>
-                    <textarea
-                      name="description"
-                      value={formData.description}
-                      onChange={handleInputChange}
-                      placeholder="Deskripsi kategori (opsional)"
-                      rows="3"
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                        fontFamily: 'inherit',
-                        resize: 'vertical'
-                      }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                        Warna <span style={{ color: '#ef4444' }}>*</span>
-                      </label>
-                      <input
-                        type="color"
-                        name="color"
-                        value={formData.color}
-                        onChange={handleInputChange}
-                        style={{
-                          width: '100%',
-                          height: '42px',
-                          border: formErrors.color ? '1px solid #ef4444' : '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          cursor: 'pointer'
-                        }}
-                      />
-                      {formErrors.color && (
-                        <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                          {formErrors.color}
-                        </span>
-                      )}
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                        Icon <span style={{ color: '#ef4444' }}>*</span>
-                      </label>
-                      <select
-                        name="icon"
-                        value={formData.icon}
-                        onChange={handleInputChange}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          border: formErrors.icon ? '1px solid #ef4444' : '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px'
-                        }}
-                      >
-                        {iconOptions.map(option => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      {formErrors.icon && (
-                        <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                          {formErrors.icon}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        name="is_active"
-                        checked={formData.is_active}
-                        onChange={handleInputChange}
-                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                      />
-                      <span style={{ fontWeight: '500' }}>Kategori Aktif</span>
-                    </label>
-                    <small style={{ color: '#6b7280', fontSize: '12px', marginLeft: '26px', display: 'block' }}>
-                      Kategori nonaktif tidak akan ditampilkan di pilihan
-                    </small>
-                  </div>
-
-                </div>
-
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'flex-end', 
-                  gap: '12px',
-                  marginTop: '24px',
-                  paddingTop: '16px',
-                  borderTop: '1px solid #e5e7eb'
-                }}>
-                  <button
-                    type="button"
-                    onClick={handleCloseModal}
-                    style={{
-                      padding: '10px 20px',
-                      background: '#f3f4f6',
-                      color: '#374151',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontWeight: '600',
-                      cursor: 'pointer'
-                    }}
-                    disabled={isSubmitting}
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn-primary"
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? 'Menyimpan...' : editingCategory ? 'Simpan Perubahan' : 'Tambah Kategori'}
-                  </button>
-                </div>
+                <div className="form-group"><label>Nama</label><input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} /></div>
+                <div className="form-group"><label>Warna</label><input type="color" style={{ width: '100%', height: '40px' }} value={formData.color} onChange={e => setFormData({ ...formData, color: e.target.value })} /></div>
+                <div className="form-group"><label>Icon</label><select value={formData.icon} onChange={e => setFormData({ ...formData, icon: e.target.value })}>{iconOptions.map(i => <option key={i.value} value={i.value}>{i.emoji} {i.value}</option>)}</select></div>
+                <div style={{ marginTop: '20px' }}><label><input type="checkbox" checked={formData.is_active} onChange={e => setFormData({ ...formData, is_active: e.target.checked })} /> Aktif</label></div>
+                <div className="modal-footer"><button type="submit" className="btn-primary">Simpan</button></div>
               </form>
             </div>
           </div>
@@ -534,5 +141,4 @@ function Kategori({ token }) {
     </div>
   );
 }
-
 export default Kategori;

@@ -1,462 +1,222 @@
 import React, { useState, useEffect } from 'react';
-// 1. Impor 'useQuill' dari 'react-quilljs'
+import axiosInstance from '../api/axiosInstance';
+import API_BASE_URL from '../config';
 import { useQuill } from 'react-quilljs';
-// 2. Impor CSS dari 'quill' (sesuai instalasi npm Anda)
-import 'quill/dist/quill.snow.css'; 
+import 'quill/dist/quill.snow.css';
 
-// 3. Buat komponen "Wrapper" untuk Quill
-// Ini adalah praktik terbaik untuk mengisolasi hook 'useQuill'
-// dan mengelolanya dengan state React (controlled component)
 const QuillEditor = ({ value, onChange, modules, formats, placeholder, style }) => {
-  const { quill, quillRef } = useQuill({
-    theme: 'snow',
-    modules,
-    formats,
-    placeholder
-  });
-
-  // Efek untuk menyinkronkan state (value) dari parent ke editor Quill
+  const { quill, quillRef } = useQuill({ theme: 'snow', modules, formats, placeholder });
   useEffect(() => {
-    if (quill) {
-      // Hanya update jika kontennya benar-benar berbeda
-      if (value !== quill.root.innerHTML) {
-        // Cek jika keduanya "kosong" untuk menghindari loop
-        if (value === '' && quill.root.innerHTML === '<p><br></p>') {
-          return;
-        }
-        
-        // Set konten dari parent state
-        quill.clipboard.dangerouslyPasteHTML(value || '');
-      }
+    if (quill && value !== quill.root.innerHTML) {
+      if (value === '' && quill.root.innerHTML === '<p><br></p>') return;
+      quill.clipboard.dangerouslyPasteHTML(value || '');
     }
-  }, [quill, value]); // Hanya berjalan saat quill siap atau 'value' dari parent berubah
-
-  // Efek untuk menyinkronkan perubahan dari editor Quill ke parent state (onChange)
+  }, [quill, value]);
   useEffect(() => {
     if (!quill) return;
-
     const handleChange = (delta, oldDelta, source) => {
-      if (source === 'user') { // Hanya jalankan jika perubahan dari user
-        const html = quill.root.innerHTML;
-        onChange(html);
-      }
+      if (source === 'user') onChange(quill.root.innerHTML);
     };
-
     quill.on('text-change', handleChange);
-    return () => {
-      quill.off('text-change', handleChange);
-    };
+    return () => quill.off('text-change', handleChange);
   }, [quill, onChange]);
-  
-  // Berikan style (tinggi) ke div yang akan menjadi area editor
-  return (
-    <div style={style}>
-      <div ref={quillRef} />
-    </div>
-  );
+  return <div style={style}><div ref={quillRef} /></div>;
 };
 
-
-function Artikel({ token }) {
+function Artikel() {
   const [articles, setArticles] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('semua');
   const [selectedStatus, setSelectedStatus] = useState('semua');
+
   const [showModal, setShowModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [editingArticle, setEditingArticle] = useState(null);
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  
-  const [formData, setFormData] = useState({
-    title: '',
-    content: '',
-    category_id: null,
-    feature_image: '',
-    is_published: false
-  });
-  
-  const [formErrors, setFormErrors] = useState({});
+
+  const [formData, setFormData] = useState({ title: '', content: '', category_id: null, feature_image: '', is_published: false });
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Quill modules configuration (tetap sama)
   const modules = {
     toolbar: [
-      [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-      [{ 'font': [] }],
-      [{ 'size': ['small', false, 'large', 'huge'] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'color': [] }, { 'background': [] }],
-      [{ 'script': 'sub'}, { 'script': 'super' }],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'indent': '-1'}, { 'indent': '+1' }],
-      [{ 'align': [] }],
-      ['blockquote', 'code-block'],
-      ['link', 'image', 'video'],
-      ['clean']
+      [{ 'header': [1, 2, false] }], ['bold', 'italic', 'underline'],
+      [{ 'list': 'ordered' }, { 'list': 'bullet' }], ['link', 'image'], ['clean']
     ]
   };
-
-  const formats = [
-    'header', 'font', 'size',
-    'bold', 'italic', 'underline', 'strike',
-    'color', 'background',
-    'script',
-    'list', 'bullet', 'indent',
-    'align',
-    'blockquote', 'code-block',
-    'link', 'image', 'video'
-  ];
+  const formats = ['header', 'bold', 'italic', 'underline', 'list', 'bullet', 'link', 'image'];
 
   useEffect(() => {
-    if (token) {
-      fetchArticles();
-      fetchCategories();
-    }
-  }, [token, selectedCategory, selectedStatus]);
+    fetchArticles(); fetchCategories();
+  }, [selectedCategory, selectedStatus]);
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/categories', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setCategories(result.data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-    }
+      const response = await axiosInstance.get('/api/categories');
+      if (response.data.success) setCategories(response.data.data || []);
+    } catch (error) { console.error(error); }
   };
 
   const fetchArticles = async () => {
     try {
       setLoading(true);
-      
-      let url = 'http://localhost:8080/api/articles?page=1&limit=1000';
-      if (selectedStatus !== 'semua') {
-        url += `&published=${selectedStatus === 'published'}`;
+      let url = `/api/articles?page=1&limit=1000`;
+      if (selectedStatus !== 'semua') url += `&published=${selectedStatus === 'published'}`;
+      const response = await axiosInstance.get(url);
+      if (response.data.success) setArticles(response.data.data || []);
+    } catch (error) { console.error(error); } finally { setLoading(false); }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files);
+    const maxSize = 10 * 1024 * 1024;
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+
+    const validFiles = files.filter(file => {
+      if (file.size > maxSize) {
+        alert(`File ${file.name} melebihi 10MB`);
+        return false;
       }
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setArticles(result.data || []);
+      if (!allowedTypes.includes(file.type)) {
+        alert(`Tipe file ${file.name} bukan gambar yang didukung`);
+        return false;
       }
-    } catch (error) {
-      console.error('Error fetching articles:', error);
-    } finally {
-      setLoading(false);
-    }
+      return true;
+    });
+    setSelectedFiles(prev => [...prev, ...validFiles]);
+  };
+
+  const removeFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleOpenModal = (article = null) => {
+    setSelectedFiles([]);
     if (article) {
       setEditingArticle(article);
       setFormData({
-        title: article.title,
-        content: article.content,
-        category_id: article.category_id || null,
-        feature_image: article.feature_image || '',
+        title: article.title, content: article.content,
+        category_id: article.category_id || null, feature_image: article.feature_image || '',
         is_published: article.is_published
       });
     } else {
       setEditingArticle(null);
-      setFormData({
-        title: '',
-        content: '',
-        category_id: null,
-        feature_image: '',
-        is_published: false
-      });
+      setFormData({ title: '', content: '', category_id: null, feature_image: '', is_published: false });
     }
-    setFormErrors({});
     setShowModal(true);
   };
 
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingArticle(null);
-    setFormData({
-      title: '',
-      content: '',
-      category_id: null,
-      feature_image: '',
-      is_published: false
-    });
-    setFormErrors({});
-  };
-
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : (name === 'category_id' ? (value ? parseInt(value) : null) : value)
-    }));
-    
-    if (formErrors[name]) {
-      setFormErrors(prev => ({ ...prev, [name]: '' }));
-    }
-  };
-
-  const handleContentChange = (value) => {
-    setFormData(prev => ({
-      ...prev,
-      content: value
-    }));
-    
-    if (formErrors.content) {
-      setFormErrors(prev => ({ ...prev, content: '' }));
-    }
-  };
-
-  const validateForm = () => {
-    const errors = {};
-    if (!formData.title.trim()) errors.title = 'Judul artikel wajib diisi';
-    // Validasi konten tetap sama, karena 'react-quilljs' juga menghasilkan '<p><br></p>' saat kosong
-    if (!formData.content.trim() || formData.content === '<p><br></p>') {
-      errors.content = 'Konten artikel wajib diisi';
-    }
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+    setSelectedFiles([]);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!validateForm()) return;
-    
+    if (!formData.title.trim()) return;
+
     setIsSubmitting(true);
-    
     try {
-      const url = editingArticle
-        ? `http://localhost:8080/api/articles/${editingArticle.id}`
-        : 'http://localhost:8080/api/articles';
-      
-      const method = editingArticle ? 'PUT' : 'POST';
-      
-      const payload = {
-        title: formData.title.trim(),
-        content: formData.content.trim(),
-        category_id: formData.category_id,
-        feature_image: formData.feature_image.trim() || null,
-        is_published: formData.is_published
-      };
-      
-      const response = await fetch(url, {
-        method: method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-      
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.message || 'Gagal menyimpan artikel');
+      let response;
+      const url = editingArticle ? `/api/articles/${editingArticle.id}` : `/api/articles`;
+
+      if (editingArticle) {
+        response = await axiosInstance.put(url, formData);
+      } else {
+        const formDataToSend = new FormData();
+        formDataToSend.append('title', formData.title);
+        formDataToSend.append('content', formData.content);
+        if (formData.category_id) formDataToSend.append('category_id', formData.category_id);
+        formDataToSend.append('is_published', formData.is_published);
+
+        selectedFiles.forEach(file => {
+          formDataToSend.append('documents', file);
+        });
+
+        response = await axiosInstance.post(url, formDataToSend, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
       }
-      
-      alert(editingArticle ? 'Artikel berhasil diperbarui!' : 'Artikel berhasil dibuat!');
+
+      alert('Berhasil menyimpan artikel!');
       handleCloseModal();
       fetchArticles();
-      
     } catch (error) {
-      console.error('Error saving article:', error);
-      alert('Gagal menyimpan artikel: ' + error.message);
+      alert(error.response?.data?.message || error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleViewDetail = async (articleId) => {
-    setShowDetailModal(true);
-    setLoadingDetail(true);
-    setSelectedArticle(null);
-    
+  const handleDelete = async (id) => {
+    if (!window.confirm('Hapus artikel ini?')) return;
     try {
-      const response = await fetch(`http://localhost:8080/api/articles/${articleId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setSelectedArticle(result.data);
-      }
-    } catch (error) {
-      console.error('Error fetching article detail:', error);
-      alert('Gagal memuat detail artikel');
-      setShowDetailModal(false);
-    } finally {
-      setLoadingDetail(false);
-    }
-  };
-
-  const closeDetailModal = () => {
-    setShowDetailModal(false);
-    setSelectedArticle(null);
-  };
-
-  const handleDelete = async (id, title) => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus artikel "${title}"?`)) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`http://localhost:8080/api/articles/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.message || 'Gagal menghapus artikel');
-      }
-      
-      alert('Artikel berhasil dihapus');
+      await axiosInstance.delete(`/api/articles/${id}`);
       fetchArticles();
-    } catch (error) {
-      console.error('Error deleting article:', error);
-      alert('Gagal menghapus artikel: ' + error.message);
-    }
+    } catch (error) { alert(error.message); }
+  };
+
+  const handleViewDetail = async (id) => {
+    setShowDetailModal(true); setLoadingDetail(true);
+    try {
+      const response = await axiosInstance.get(`/api/articles/${id}`);
+      if (response.data.success) setSelectedArticle(response.data.data);
+    } catch (e) { console.error(e); } finally { setLoadingDetail(false); }
   };
 
   const filteredArticles = articles.filter(article => {
-    const matchesSearch = article.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         article.content?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesCategory = selectedCategory === 'semua' || 
-                           (article.category_id && article.category_id.toString() === selectedCategory);
-    
+    const matchesSearch = article.title?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'semua' || (article.category_id && article.category_id.toString() === selectedCategory);
     return matchesSearch && matchesCategory;
   });
 
-  const getStatusStats = () => {
-    return {
-      total: articles.length,
-      published: articles.filter(a => a.is_published).length,
-      draft: articles.filter(a => !a.is_published).length
-    };
-  };
+  const formatDate = (str) => str ? new Date(str).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
+  const stripHtml = (html) => { const tmp = document.createElement('DIV'); tmp.innerHTML = html; return tmp.textContent || ''; };
 
-  const stats = getStatusStats();
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('id-ID', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
-
-  const stripHtml = (html) => {
-    const tmp = document.createElement('DIV');
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || '';
+  const stats = {
+    total: articles.length,
+    published: articles.filter(a => a.is_published).length,
+    draft: articles.filter(a => !a.is_published).length
   };
 
   return (
-    <div className="page-container">
-      <div className="page-header">
+    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '24px' }}>
         <h1 className="page-title">Artikel</h1>
-        <button 
-          className="btn-primary"
-          onClick={() => handleOpenModal()}
-        >
-          + Buat Artikel
-        </button>
+        <p style={{ color: '#6b7280', fontSize: '14px' }}>Kelola konten dan berita</p>
       </div>
 
       <div className="stats-grid">
-        <div className="stat-card">
-          <h3>Total Artikel</h3>
-          <div className="stat-value">{stats.total}</div>
-        </div>
-        <div className="stat-card">
-          <h3>Dipublikasi</h3>
-          <div className="stat-value" style={{ color: '#10b981' }}>
-            {stats.published}
-          </div>
-        </div>
-        <div className="stat-card">
-          <h3>Draft</h3>
-          <div className="stat-value" style={{ color: '#6b7280' }}>
-            {stats.draft}
-          </div>
-        </div>
+        <div className="stat-card"><h3>Total</h3><div className="stat-value">{stats.total}</div></div>
+        <div className="stat-card"><h3>Published</h3><div className="stat-value" style={{ color: '#10b981' }}>{stats.published}</div></div>
+        <div className="stat-card"><h3>Draft</h3><div className="stat-value" style={{ color: '#6b7280' }}>{stats.draft}</div></div>
       </div>
 
-      <div className="page-container" style={{ background: 'white', marginTop: '20px' }}>
-        <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+      <div className="page-container">
+        <div className="page-header-content">
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
             <input
-              type="text"
-              placeholder="Cari artikel..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                flex: 1,
-                padding: '10px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px'
-              }}
+              type="text" placeholder="Cari artikel..."
+              value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+              style={{ flex: 1, padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px' }}
             />
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              style={{
-                padding: '10px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px',
-                minWidth: '150px'
-              }}
-            >
+            <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} style={{ padding: '10px', border: '1px solid #d1d5db', borderRadius: '8px' }}>
               <option value="semua">Semua Kategori</option>
-              {categories.filter(c => c.is_active).map(category => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              style={{
-                padding: '10px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px',
-                minWidth: '150px'
-              }}
-            >
-              <option value="semua">Semua Status</option>
-              <option value="published">Dipublikasi</option>
-              <option value="draft">Draft</option>
-            </select>
+            <button className="btn-primary" onClick={() => handleOpenModal()}>+ Buat Artikel</button>
           </div>
         </div>
 
@@ -468,478 +228,156 @@ function Artikel({ token }) {
                 <th>Kategori</th>
                 <th>Penulis</th>
                 <th>Status</th>
-                <th>Tanggal Dibuat</th>
-                <th>Aksi</th>
+                <th>Tanggal</th>
+                <th style={{ textAlign: 'center' }}>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>
-                    Memuat data...
-                  </td>
-                </tr>
-              ) : filteredArticles.length === 0 ? (
-                <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>
-                    Tidak ada artikel yang ditemukan
-                  </td>
-                </tr>
-              ) : (
-                filteredArticles.map((article) => (
+              {loading ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>Loading...</td></tr> :
+                filteredArticles.map(article => (
                   <tr key={article.id}>
                     <td>
                       <strong>{article.title}</strong>
-                      <div style={{ 
-                        fontSize: '12px', 
-                        color: '#6b7280', 
-                        marginTop: '4px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        maxWidth: '300px'
-                      }}>
-                        {stripHtml(article.content).substring(0, 80)}...
-                      </div>
+                      <div className="sub-text">{stripHtml(article.content).substring(0, 60)}...</div>
                     </td>
                     <td>
-                      {article.category ? (
-                        <span style={{ 
-                          fontSize: '13px',
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          background: article.category.color + '20',
-                          color: article.category.color
-                        }}>
-                          {article.category.name}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#9ca3af' }}>-</span>
-                      )}
+                      {article.category ? <span style={{ fontSize: '12px', padding: '4px 8px', background: article.category.color + '20', color: article.category.color, borderRadius: '4px' }}>{article.category.name}</span> : '-'}
                     </td>
-                    <td>
-                      {article.user ? (
-                        <div style={{ fontSize: '13px' }}>
-                          {article.user.name}
-                        </div>
-                      ) : (
-                        <span style={{ color: '#9ca3af' }}>-</span>
-                      )}
-                    </td>
+                    <td>{article.user?.name || '-'}</td>
                     <td>
                       <span style={{
-                        padding: '4px 12px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: '500',
+                        padding: '6px 12px', borderRadius: '99px', fontSize: '12px', fontWeight: '600',
                         background: article.is_published ? '#d1fae5' : '#f3f4f6',
-                        color: article.is_published ? '#059669' : '#6b7280'
+                        color: article.is_published ? '#065f46' : '#374151'
                       }}>
-                        {article.is_published ? '✓ Dipublikasi' : '📝 Draft'}
+                        {article.is_published ? 'Published' : 'Draft'}
                       </span>
                     </td>
-                    <td style={{ fontSize: '13px', color: '#6b7280' }}>
-                      {formatDate(article.created_at)}
-                    </td>
+                    <td style={{ color: '#6b7280' }}>{formatDate(article.created_at)}</td>
                     <td>
-                      <div className="action-buttons">
-                        <button 
-                          className="btn-view" 
-                          onClick={() => handleViewDetail(article.id)}
-                          title="Lihat Detail"
-                        >
-                          👁️
-                        </button>
-                        <button 
-                          className="btn-edit" 
-                          onClick={() => handleOpenModal(article)}
-                          title="Edit"
-                        >
-                          ✏️
-                        </button>
-                        <button 
-                          className="btn-delete" 
-                          onClick={() => handleDelete(article.id, article.title)}
-                          title="Hapus"
-                        >
-                          🗑️
-                        </button>
+                      <div className="action-buttons" style={{ justifyContent: 'center' }}>
+                        <button className="btn-action-icon btn-view" onClick={() => handleViewDetail(article.id)}><svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></button>
+                        <button className="btn-action-icon btn-edit" onClick={() => handleOpenModal(article)}><svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
+                        <button className="btn-action-icon btn-delete" onClick={() => handleDelete(article.id)}><svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
+                ))}
             </tbody>
           </table>
         </div>
-
-        {!loading && filteredArticles.length > 0 && (
-          <div style={{ 
-            padding: '16px 20px', 
-            borderTop: '1px solid #e5e7eb',
-            textAlign: 'center',
-            color: '#6b7280',
-            fontSize: '14px'
-          }}>
-            Menampilkan {filteredArticles.length} dari {articles.length} artikel
-          </div>
-        )}
       </div>
 
-      {/* Modal Create/Edit */}
       {showModal && (
         <div className="modal-overlay" onClick={handleCloseModal}>
-          <div 
-            className="modal-content" 
-            onClick={e => e.stopPropagation()}
-            style={{ 
-              maxWidth: '900px',
-              maxHeight: 'calc(100vh - 40px)',
-              display: 'flex',
-              flexDirection: 'column'
-            }}
-          >
-            <div className="modal-header">
-              <h2>{editingArticle ? 'Edit Artikel' : 'Buat Artikel Baru'}</h2>
-              <button 
-                className="modal-close"
-                onClick={handleCloseModal}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
-              <form onSubmit={handleSubmit} id="articleForm">
-                <div style={{ display: 'grid', gap: '16px' }}>
-                  
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                      Judul Artikel <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="title"
-                      value={formData.title}
-                      onChange={handleInputChange}
-                      placeholder="Masukkan judul artikel"
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        border: formErrors.title ? '1px solid #ef4444' : '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px'
-                      }}
-                    />
-                    {formErrors.title && (
-                      <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                        {formErrors.title}
-                      </span>
-                    )}
-                  </div>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '900px' }}>
+            <div className="modal-header"><h2>{editingArticle ? 'Edit Artikel' : 'Artikel Baru'}</h2><button className="modal-close" onClick={handleCloseModal}>×</button></div>
+            <div className="modal-body">
+              <form onSubmit={handleSubmit}>
+                <div className="form-group"><label>Judul <span style={{ color: 'red' }}>*</span></label><input type="text" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} required /></div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                        Kategori
-                      </label>
-                      <select
-                        name="category_id"
-                        value={formData.category_id || ''}
-                        onChange={handleInputChange}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '6px',
-                          fontSize: '14px'
-                        }}
-                      >
-                        <option value="">Pilih Kategori (Opsional)</option>
-                        {categories.filter(c => c.is_active).map(category => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '30px', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          name="is_published"
-                          checked={formData.is_published}
-                          onChange={handleInputChange}
-                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                        />
-                        <span style={{ fontWeight: '500' }}>Publikasikan Artikel</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                      URL Gambar Utama
-                    </label>
-                    <input
-                      type="text"
-                      name="feature_image"
-                      value={formData.feature_image}
-                      onChange={handleInputChange}
-                      placeholder="https://example.com/image.jpg (Opsional)"
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
-                      Konten Artikel <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <div style={{ 
-                      border: formErrors.content ? '1px solid #ef4444' : '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      minHeight: '300px' // Container ini akan menampung toolbar + editor
-                    }}>
-                      {/* 4. Ganti <ReactQuill> dengan <QuillEditor> */}
-                      <QuillEditor
-                        value={formData.content}
-                        onChange={handleContentChange}
-                        modules={modules}
-                        formats={formats}
-                        placeholder="Tulis konten artikel di sini..."
-                        // 'useQuill' menerapkan tinggi ke area editor saja
-                        // 'minHeight: 300px' di parent akan menampung toolbar + editor 250px
-                        style={{ height: '250px' }} 
-                      />
-                    </div>
-                    {formErrors.content && (
-                      <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                        {formErrors.content}
-                      </span>
-                    )}
-                  </div>
-
+                <div className="form-group">
+                  <label>Kategori</label>
+                  <select
+                    value={formData.category_id || ''}
+                    onChange={e => setFormData({ ...formData, category_id: e.target.value ? parseInt(e.target.value) : null })}
+                  >
+                    <option value="">Pilih Kategori</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
 
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'flex-end', 
-                  gap: '12px',
-                  marginTop: '24px',
-                  paddingTop: '16px',
-                  borderTop: '1px solid #e5e7eb',
-                  position: 'sticky',
-                  bottom: 0,
-                  background: 'white',
-                  marginLeft: '-24px',
-                  marginRight: '-24px',
-                  paddingLeft: '24px',
-                  paddingRight: '24px'
-                }}>
-                  <button
-                    type="button"
-                    onClick={handleCloseModal}
-                    style={{
-                      padding: '10px 20px',
-                      background: '#f3f4f6',
-                      color: '#374151',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontWeight: '600',
-                      cursor: 'pointer'
+                <div className="form-group" style={{ marginBottom: '24px' }}><label>Isi Artikel</label><QuillEditor value={formData.content} onChange={v => setFormData({ ...formData, content: v })} modules={modules} formats={formats} style={{ height: '300px' }} /></div>
+
+                {!editingArticle && (
+                  <div className="form-group" style={{ marginTop: '60px' }}>
+                    <label>Lampiran Gambar (Opsional)</label>
+                    <div style={{
+                      border: '2px dashed #d1d5db', borderRadius: '8px', padding: '20px',
+                      textAlign: 'center', background: '#f9fafb', cursor: 'pointer', transition: 'all 0.3s'
                     }}
-                    disabled={isSubmitting}
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn-primary"
-                    disabled={isSubmitting}
-                    form="articleForm"
-                  >
-                    {isSubmitting ? 'Menyimpan...' : editingArticle ? 'Simpan Perubahan' : 'Buat Artikel'}
-                  </button>
-                </div>
+                      onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.background = '#eff6ff'; }}
+                      onDragLeave={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.background = '#f9fafb'; }}
+                      onDrop={(e) => {
+                        e.preventDefault(); e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.background = '#f9fafb';
+                        handleFileChange({ target: { files: Array.from(e.dataTransfer.files) } });
+                      }}
+                      onClick={() => document.getElementById('articleFileInput').click()}>
+                      <input id="articleFileInput" type="file" multiple accept="image/jpeg,image/png,image/gif,image/webp" onChange={handleFileChange} style={{ display: 'none' }} />
+                      <div style={{ fontSize: '40px', marginBottom: '8px' }}>📎</div>
+                      <p style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
+                        Klik atau drag & drop gambar di sini
+                      </p>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>
+                        (Maks. 10MB per file. Hanya JPG, PNG, GIF, WEBP)
+                      </p>
+                    </div>
+
+                    {selectedFiles.length > 0 && (
+                      <div style={{ marginTop: '12px' }}>
+                        <p style={{ fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                          Gambar terpilih ({selectedFiles.length}):
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {selectedFiles.map((file, index) => (
+                            <div key={index} style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              padding: '8px 12px', background: '#f3f4f6', borderRadius: '6px', fontSize: '13px'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, overflow: 'hidden' }}>
+                                <span>📎</span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{file.name}</span>
+                                <span style={{ color: '#6b7280', fontSize: '12px', whiteSpace: 'nowrap' }}>{formatFileSize(file.size)}</span>
+                              </div>
+                              <button type="button" onClick={() => removeFile(index)} style={{
+                                background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px',
+                                padding: '4px 8px', cursor: 'pointer', fontSize: '12px', marginLeft: '8px'
+                              }}>
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ marginTop: '20px' }}><label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600' }}><input type="checkbox" checked={formData.is_published} onChange={e => setFormData({ ...formData, is_published: e.target.checked })} /> Langsung Publikasikan?</label></div>
+                <div className="modal-footer"><button type="button" className="btn-secondary" onClick={handleCloseModal} disabled={isSubmitting}>Batal</button><button type="submit" className="btn-primary" disabled={isSubmitting}>{isSubmitting ? 'Menyimpan...' : 'Simpan'}</button></div>
               </form>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Detail */}
-      {showDetailModal && (
-        <div className="modal-overlay" onClick={closeDetailModal}>
-          <div 
-            className="modal-content" 
-            onClick={e => e.stopPropagation()}
-            style={{ 
-              maxWidth: '800px',
-              maxHeight: 'calc(100vh - 40px)',
-              display: 'flex',
-              flexDirection: 'column'
-            }}
-          >
-            <div className="modal-header">
-              <h2>Detail Artikel</h2>
-              <button 
-                className="modal-close"
-                onClick={closeDetailModal}
-              >
-                ×
-              </button>
+      {showDetailModal && selectedArticle && (
+        <div className="modal-overlay" onClick={() => setShowDetailModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '800px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h1 style={{ margin: 0 }}>{selectedArticle.title}</h1>
+              <button className="modal-close" onClick={() => setShowDetailModal(false)}>×</button>
             </div>
-            
-            <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
-              {loadingDetail ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
-                  Memuat data...
-                </div>
-              ) : !selectedArticle ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
-                  Data tidak ditemukan
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gap: '20px' }}>
-                  {selectedArticle.feature_image && (
-                    <img 
-                      src={selectedArticle.feature_image} 
-                      alt={selectedArticle.title}
-                      style={{
-                        width: '100%',
-                        maxHeight: '300px',
-                        objectFit: 'cover',
-                        borderRadius: '8px'
-                      }}
-                      onError={(e) => { e.target.style.display = 'none'; }}
-                    />
-                  )}
-                  
-                  <div>
-                    <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#111827', marginBottom: '12px' }}>
-                      {selectedArticle.title}
-                    </h1>
-                    
-                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                      {selectedArticle.category && (
-                        <span style={{
-                          padding: '4px 12px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          fontWeight: '500',
-                          background: selectedArticle.category.color + '20',
-                          color: selectedArticle.category.color
-                        }}>
-                          {selectedArticle.category.name}
-                        </span>
-                      )}
-                      
-                      <span style={{
-                        padding: '4px 12px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        background: selectedArticle.is_published ? '#d1fae5' : '#f3f4f6',
-                        color: selectedArticle.is_published ? '#059669' : '#6b7280'
-                      }}>
-                        {selectedArticle.is_published ? '✓ Dipublikasi' : '📝 Draft'}
-                      </span>
-                    </div>
-                    
-                    <div style={{ 
-                      fontSize: '13px', 
-                      color: '#6b7280',
-                      paddingBottom: '16px',
-                      borderBottom: '1px solid #e5e7eb'
-                    }}>
-                      Oleh: <strong>{selectedArticle.user?.name || 'Unknown'}</strong> • {formatDate(selectedArticle.created_at)}
-                    </div>
-                  </div>
-
-                  <div 
-                    className="article-content"
-                    style={{ 
-                      lineHeight: '1.8',
-                      fontSize: '15px',
-                      color: '#374151'
-                    }}
-                    dangerouslySetInnerHTML={{ __html: selectedArticle.content }}
-                  />
-
-                  {selectedArticle.documents && selectedArticle.documents.length > 0 && (
-                    <div style={{
-                      padding: '16px',
-                      background: '#f9fafb',
-                      borderRadius: '8px',
-                      border: '1px solid #e5e7eb'
-                    }}>
-                      <h4 style={{ 
-                        fontSize: '14px', 
-                        fontWeight: '600', 
-                        color: '#374151',
-                        marginBottom: '12px'
-                      }}>
-                        Dokumen Lampiran ({selectedArticle.documents.length})
-                      </h4>
-                      <div style={{ display: 'grid', gap: '8px' }}>
-                        {selectedArticle.documents.map((doc, index) => (
-                          <div key={index} style={{
-                            padding: '12px',
-                            background: 'white',
-                            borderRadius: '6px',
-                            border: '1px solid #e5e7eb'
-                          }}>
-                            <strong style={{ fontSize: '14px' }}>📎 {doc.file_name}</strong>
-                            {doc.description && (
-                              <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#6b7280' }}>
-                                {doc.description}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+            <div style={{ marginBottom: '20px', color: '#6b7280', fontSize: '14px' }}>
+              By {selectedArticle.user?.name} | {formatDate(selectedArticle.created_at)}
             </div>
-
-            <div style={{
-              padding: '16px 24px',
-              borderTop: '1px solid #e5e7eb',
-              display: 'flex',
-              justifyContent: 'flex-end',
-              position: 'sticky',
-              bottom: 0,
-              background: 'white'
-            }}>
-              <button
-                onClick={closeDetailModal}
-                style={{
-                  padding: '10px 24px',
-                  background: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-              >
-                Tutup
-              </button>
-            </div>
+            {selectedArticle.documents && selectedArticle.documents.length > 0 && (
+              <div style={{ marginBottom: '20px', padding: '12px', background: '#f9fafb', borderRadius: '8px' }}>
+                <strong>Lampiran:</strong>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  {selectedArticle.documents.map(doc => (
+                    <a key={doc.id} href={`${API_BASE_URL}/api/files/${doc.id}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: '#2563eb', fontSize: '14px' }}>
+                      📎 {doc.file_name}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div dangerouslySetInnerHTML={{ __html: selectedArticle.content }} className="article-content" />
           </div>
         </div>
       )}
     </div>
   );
 }
-
 export default Artikel;

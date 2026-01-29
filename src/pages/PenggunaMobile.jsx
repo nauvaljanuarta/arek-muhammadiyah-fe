@@ -1,250 +1,73 @@
 import React, { useState, useEffect } from 'react';
+import axiosInstance from '../api/axiosInstance';
 import UserDetailModal from '../components/UserDetailModal';
 
-function PenggunaMobile({ token }) {
+function PenggunaMobile() {
   const [searchTerm, setSearchTerm] = useState('');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCity, setSelectedCity] = useState('semua');
-  const [selectedDistrict, setSelectedDistrict] = useState('semua');
   const [cities, setCities] = useState([]);
-  const [districts, setDistricts] = useState([]);
-  const [filteredDistricts, setFilteredDistricts] = useState([]);
-  const [error, setError] = useState(null);
+
   const [showModal, setShowModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
   useEffect(() => {
-    if (token) {
-      fetchWilayahData();
-      fetchMobileUsers();
-    }
-  }, [token]);
-  
-  useEffect(() => {
-    filterDistrictsByCity(selectedCity);
-  }, [selectedCity, districts]);
+    fetchWilayah(); fetchMobileUsers();
+  }, []);
 
-  const fetchWilayahData = async () => {
+  const fetchWilayah = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/cities', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      const result = await response.json();
-      const citiesData = result.data || result;
-      
-      if (Array.isArray(citiesData)) {
-        setCities(citiesData);
-        
-        const allDistricts = [];
-        
-        citiesData.forEach(city => {
-          if (city.districts && Array.isArray(city.districts)) {
-            city.districts.forEach(district => {
-              allDistricts.push({
-                ...district,
-                city_id: city.id,
-                city_name: city.name
-              });
-            });
-          }
-        });
-        
-        setDistricts(allDistricts);
-      }
-    } catch (error) {
-      console.error('Error fetching wilayah data:', error);
-      setError('Gagal memuat data wilayah');
-    }
-  };
-  
-  const filterDistrictsByCity = (cityId) => {
-    if (cityId === 'semua') {
-      setFilteredDistricts([]);
-      setSelectedDistrict('semua');
-      return;
-    }
-    const filtered = districts.filter(d => d.city_id === cityId);
-    setFilteredDistricts(filtered);
+      const res = await axiosInstance.get('/api/cities');
+      if (res.data.data) setCities(res.data.data);
+    } catch (e) { console.error(e); }
   };
 
   const fetchMobileUsers = async () => {
     try {
       setLoading(true);
-      setError(null);
-      
-      const response = await fetch('http://localhost:8080/api/users/mobile', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      const result = await response.json();
-      let usersData = [];
-      
-      if (result.data && Array.isArray(result.data)) {
-        usersData = result.data;
-      } else if (Array.isArray(result)) {
-        usersData = result;
-      }
-
-      setUsers(usersData);
-      
-    } catch (error) {
-      console.error('Error fetching mobile users:', error);
-      setError(error.message || 'Gagal memuat data pengguna mobile');
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
+      const response = await axiosInstance.get('/api/users/mobile');
+      setUsers(response.data.data || []);
+    } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
-  const handleViewDetail = async (userId) => {
-    setShowModal(true);
-    setLoadingDetail(true);
-    setSelectedUser(null);
-    
+  const handleViewDetail = async (id) => {
+    setShowModal(true); setLoadingDetail(true);
     try {
-      const response = await fetch(`http://localhost:8080/api/users/${userId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      const result = await response.json();
-      const userData = result.data || result;
-      setSelectedUser(userData);
-    } catch (error) {
-      console.error('Error fetching user detail:', error);
-      alert('Gagal memuat detail pengguna');
-      setShowModal(false);
-    } finally {
-      setLoadingDetail(false);
-    }
+      const res = await axiosInstance.get(`/api/users/${id}`);
+      setSelectedUser(res.data.data);
+    } catch (e) { console.error(e); } finally { setLoadingDetail(false); }
   };
 
-  const closeModal = () => {
-    setShowModal(false);
-    setSelectedUser(null);
-  };
-
-  const filteredUsers = users.filter(user => {
-    const searchTermLower = searchTerm.toLowerCase();
-    
-    const matchesSearch = user.name?.toLowerCase().includes(searchTermLower) ||
-                         user.telp?.includes(searchTerm) ||
-                         user.nik?.includes(searchTerm) ||
-                         user.village_name?.toLowerCase().includes(searchTermLower) ||
-                         user.city_name?.toLowerCase().includes(searchTermLower);
-    
-    const matchesCity = selectedCity === 'semua' || user.city_id === selectedCity;
-    const matchesDistrict = selectedDistrict === 'semua' || user.district_id === selectedDistrict;
-    
-    return matchesSearch && matchesCity && matchesDistrict;
-  });
-
-  const uniqueVillagesCount = new Set(users.map(u => u.village_id)).size;
+  const filtered = users.filter(u =>
+    (u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.telp?.includes(searchTerm)) &&
+    (selectedCity === 'semua' || u.city_id === selectedCity)
+  );
 
   return (
-    <div className="page-container">
-      <div className="page-header">
+    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '24px' }}>
         <h1 className="page-title">Pengguna Mobile App</h1>
-        <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
-          Anggota yang menggunakan aplikasi mobile
-        </p>
+        <p style={{ color: '#6b7280', fontSize: '14px' }}>Daftar pengguna yang aktif menggunakan aplikasi</p>
       </div>
-
-      {error && (
-        <div style={{
-          padding: '12px 16px',
-          background: '#FEE2E2',
-          border: '1px solid #FCA5A5',
-          borderRadius: '8px',
-          color: '#991B1B',
-          marginBottom: '16px'
-        }}>
-          ⚠️ {error}
-        </div>
-      )}
 
       <div className="stats-grid">
-        <div className="stat-card">
-          <h3>Total Pengguna</h3>
-          <div className="stat-value" style={{ color: '#3b82f6' }}>
-            {users.length}
-          </div>
-        </div>
-        <div className="stat-card">
-          <h3>Akun Aktif</h3>
-          <div className="stat-value" style={{ color: '#10b981' }}>
-            {users.filter(u => u.is_mobile).length}
-          </div>
-        </div>
-        <div className="stat-card">
-          <h3>Kelurahan Terdaftar</h3>
-          <div className="stat-value" style={{ color: '#8b5cf6' }}>
-            {uniqueVillagesCount}
-          </div>
-        </div>
+        <div className="stat-card"><h3>Total Pengguna</h3><div className="stat-value" style={{ color: '#3b82f6' }}>{users.length}</div></div>
+        <div className="stat-card"><h3>Aktif Login</h3><div className="stat-value" style={{ color: '#10b981' }}>{users.filter(u => u.is_active).length}</div></div>
       </div>
 
-      <div className="page-container" style={{ background: 'white', marginTop: '20px' }}>
-        <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
-          <div style={{ marginBottom: '16px' }}>
+      <div className="page-container">
+        <div className="page-header-content">
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
             <input
-              type="text"
-              placeholder="Cari berdasarkan nama, NIK, telepon, atau wilayah..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px'
-              }}
+              type="text" placeholder="Cari pengguna..."
+              value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+              style={{ flex: 1, padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px' }}
             />
-          </div>
-          
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <select
-              value={selectedCity}
-              onChange={(e) => setSelectedCity(e.target.value)}
-              style={{
-                flex: 1,
-                padding: '10px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px'
-              }}
-            >
-              <option value="semua">Semua Kabupaten/Kota</option>
-              {cities.map(city => (
-                <option key={city.id} value={city.id}>{city.name}</option>
-              ))}
-            </select>
-            <select
-              value={selectedDistrict}
-              onChange={(e) => setSelectedDistrict(e.target.value)}
-              disabled={selectedCity === 'semua'}
-              style={{
-                flex: 1,
-                padding: '10px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px'
-              }}
-            >
-              <option value="semua">Semua Kecamatan</option>
-              {filteredDistricts.map(district => (
-                <option key={district.id} value={district.id}>
-                  {district.name}
-                </option>
-              ))}
+            <select value={selectedCity} onChange={e => setSelectedCity(e.target.value)} style={{ padding: '10px', border: '1px solid #d1d5db', borderRadius: '8px' }}>
+              <option value="semua">Semua Kota</option>
+              {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
         </div>
@@ -254,110 +77,45 @@ function PenggunaMobile({ token }) {
             <thead>
               <tr>
                 <th>Nama</th>
-                <th>No. Telepon</th>
-                <th>Wilayah Domisili</th>
+                <th>Kontak</th>
+                <th>Wilayah</th>
                 <th>NIK</th>
                 <th>Alamat</th>
-                <th>Aksi</th>
+                <th style={{ textAlign: 'center' }}>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>
-                    Memuat data...
-                  </td>
-                </tr>
-              ) : filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>
-                    {error ? 'Terjadi kesalahan saat memuat data' : 'Tidak ada pengguna mobile yang ditemukan'}
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((user) => (
+              {loading ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>Loading...</td></tr> :
+                filtered.map(user => (
                   <tr key={user.id}>
                     <td>
                       <strong>{user.name}</strong>
+                      <div style={{ fontSize: '10px', color: '#065f46', background: '#d1fae5', width: 'fit-content', padding: '2px 6px', borderRadius: '4px', marginTop: '4px' }}>Mobile App</div>
                     </td>
+                    <td>📞 {user.telp || '-'}</td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        📞 {user.telp || '-'}
-                      </div>
+                      <div style={{ fontWeight: '600' }}>{user.village_name}</div>
+                      <div className="sub-text">{user.district_name}, {user.city_name}</div>
                     </td>
+                    <td><code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>{user.nik}</code></td>
+                    <td style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.address}</td>
                     <td>
-                      <div style={{ fontSize: '13px' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '2px' }}>
-                          {user.village_name || '-'}
-                        </div>
-                        <div style={{ color: '#6b7280', fontSize: '12px' }}>
-                          {user.district_name || '-'}, {user.city_name || '-'}
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <code style={{ 
-                        fontSize: '13px', 
-                        background: '#f3f4f6', 
-                        padding: '2px 6px', 
-                        borderRadius: '4px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}>
-                        💳 {user.nik || '-'}
-                      </code>
-                    </td>
-                    <td style={{ maxWidth: '300px' }}>
-                      <div style={{ 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis', 
-                        whiteSpace: 'nowrap' 
-                      }} title={user.address}>
-                        {user.address || '-'}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="action-buttons">
-                        <button 
-                          className="btn-view" 
-                          onClick={() => handleViewDetail(user.id)}
-                          title="Lihat Detail"
-                        >
-                          👁️
+                      <div className="action-buttons" style={{ justifyContent: 'center' }}>
+                        <button className="btn-action-icon btn-view" onClick={() => handleViewDetail(user.id)}>
+                          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
+                ))}
             </tbody>
           </table>
         </div>
-        
-        {!loading && filteredUsers.length > 0 && (
-          <div style={{ 
-            padding: '16px 20px', 
-            borderTop: '1px solid #e5e7eb',
-            textAlign: 'center',
-            color: '#6b7280',
-            fontSize: '14px'
-          }}>
-            Menampilkan {filteredUsers.length} dari {users.length} pengguna mobile
-          </div>
-        )}
       </div>
 
-      {showModal && (
-        <UserDetailModal
-          isOpen={showModal}
-          onClose={closeModal}
-          user={selectedUser}
-          loading={loadingDetail}
-        />
-      )}
+      {showModal && <UserDetailModal isOpen={showModal} onClose={() => setShowModal(false)} user={selectedUser} loading={loadingDetail} />}
     </div>
   );
-};
+}
 
 export default PenggunaMobile;
